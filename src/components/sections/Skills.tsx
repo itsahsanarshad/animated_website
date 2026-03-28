@@ -2,85 +2,130 @@
 
 import { motion } from "framer-motion";
 import GlassCard from "@/components/ui/GlassCard";
-import { 
-  Database, 
-  Layout, 
-  Cloud, 
-  Settings, 
-  Terminal,
-  Server
+import {
+  Database, Layout, Cloud, Settings, Brain,
 } from "lucide-react";
 
 const skillCategories = [
   {
-    title: "Engine Core",
+    title: "Backend Development",
     icon: Database,
+    color: "#22c55e",
+    sector: "Sector 01 · Logic",
     skills: ["C", "C#", "C++", "Python", "REST API", "Flask"],
-    color: "accent"
   },
   {
-    title: "Visual Horizon",
+    title: "Frontend Development",
     icon: Layout,
+    color: "#26d0ce",
+    sector: "Sector 02 · Interface",
     skills: ["React", "Next.js", "React Native", "WordPress"],
-    color: "blue-400"
   },
   {
-    title: "Cloud Nebula",
+    title: "Cloud & Infrastructure",
     icon: Cloud,
-    skills: ["AWS", "Azure", "VPS Deployment"],
-    color: "purple-400"
+    color: "#7c3aed",
+    sector: "Sector 03 · Cloud",
+    skills: ["AWS", "Azure", "VPS Deployment", "PM2"],
   },
   {
-    title: "Command Tools",
+    title: "Tools & Platforms",
     icon: Settings,
-    skills: ["PM2", "NodeMailer", "SMTP", "ACF", "Elementor"],
-    color: "orange-400"
-  }
+    color: "#f59e0b",
+    sector: "Sector 04 · Systems",
+    skills: ["NodeMailer", "SMTP", "WooCommerce", "ACF Plugin", "Elementor", "Noptin"],
+  },
+  {
+    title: "Soft Skills",
+    icon: Brain,
+    color: "#ff0080",
+    sector: "Sector 05 · Mindset",
+    skills: ["Team Player", "Problem Solving", "Critical Thinking", "Fast Learner"],
+  },
 ];
 
 export default function Skills() {
   return (
-    <section id="skills" className="py-24 relative">
-      <div className="container px-6 mx-auto relative z-10 font-body">
-        <div className="flex flex-col items-center mb-20 text-center">
-          <h2 className="text-sm font-black uppercase tracking-[0.5em] text-accent/60 mb-4">
-            Technical Arsenal
-          </h2>
-          <h3 className="text-5xl md:text-7xl font-heading font-bold text-gradient">
-            Powering the Void
-          </h3>
-        </div>
+    <section id="skills" className="py-28 md:py-36 relative overflow-hidden">
+      {/* Ambient nebula */}
+      <div
+        className="absolute bottom-0 right-0 w-[500px] h-[500px] rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, #7c3aed08, transparent 70%)", filter: "blur(100px)" }}
+      />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {skillCategories.map((category, idx) => (
+      <div className="container px-6 mx-auto max-w-7xl relative z-10">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="flex flex-col items-center mb-20 text-center"
+        >
+          <span className="text-[10px] font-black uppercase tracking-[0.6em] text-accent/50 mb-4 px-5 py-2 border border-accent/10 rounded-full glass inline-flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent inline-block animate-pulse" />
+            Technical Arsenal · SHO‑Mapped
+          </span>
+          <h2 className="text-5xl md:text-7xl lg:text-8xl font-heading font-black text-gradient leading-tight tracking-tighter">
+            System{" "}
+            <span
+              className="text-accent underline decoration-accent/20 decoration-wavy underline-offset-8"
+              style={{ textShadow: "0 0 40px rgba(34,197,94,0.2)" }}
+            >
+              Capabilities
+            </span>
+          </h2>
+        </motion.div>
+
+        {/* Cards grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+          {skillCategories.map((cat, idx) => (
             <motion.div
-              key={category.title}
+              key={cat.title}
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: idx * 0.1 }}
+              transition={{ duration: 0.7, delay: idx * 0.08, ease: [0.16, 1, 0.3, 1] }}
+              className="h-full"
             >
-              <GlassCard className="h-full group hover:bg-accent/5 hover:border-accent/30 transition-all duration-500 overflow-hidden">
-                <div className="relative p-8">
-                  <div className={`w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center text-accent mb-6 group-hover:scale-110 transition-transform duration-500`}>
-                    <category.icon className="w-7 h-7" />
+              <GlassCard className="h-full flex flex-col cursor-pointer">
+                <div className="p-7 flex flex-col h-full">
+                  {/* Icon + sector */}
+                  <div className="flex items-start justify-between mb-8">
+                    <div
+                      className="w-14 h-14 rounded-2xl glass flex items-center justify-center flex-shrink-0 transition-colors duration-300"
+                      style={{ color: cat.color, boxShadow: `0 0 20px ${cat.color}20` }}
+                    >
+                      <cat.icon className="w-7 h-7" />
+                    </div>
+                    <span className="text-[8px] font-black uppercase tracking-[0.3em] text-white/20 text-right leading-loose pt-1">
+                      {cat.sector}
+                    </span>
                   </div>
-                  
-                  <h4 className="text-xl font-heading font-bold mb-4 text-white group-hover:text-accent transition-colors tracking-tight">
-                    {category.title}
-                  </h4>
-                  
-                  <ul className="space-y-3">
-                    {category.skills.map((skill) => (
-                      <li key={skill} className="flex items-center gap-3 text-white/40 text-xs font-black uppercase tracking-[0.2em]">
-                        <div className="w-1.5 h-1.5 rounded-full bg-accent/20" />
+
+                  {/* Title */}
+                  <h3
+                    className="text-lg font-heading font-black mb-6 text-white tracking-tight group-hover:text-accent transition-colors"
+                    style={{ lineHeight: 1.2 }}
+                  >
+                    {cat.title}
+                  </h3>
+
+                  {/* Skills list */}
+                  <ul className="space-y-3 mt-auto">
+                    {cat.skills.map((skill) => (
+                      <li
+                        key={skill}
+                        className="flex items-center gap-3 text-white/40 text-[10px] font-black uppercase tracking-[0.25em]"
+                      >
+                        <div
+                          className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse"
+                          style={{ backgroundColor: cat.color }}
+                        />
                         {skill}
                       </li>
                     ))}
                   </ul>
-
-                  {/* Decorative orbital line */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-accent/5 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
               </GlassCard>
             </motion.div>

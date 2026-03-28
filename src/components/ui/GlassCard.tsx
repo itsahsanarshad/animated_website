@@ -32,4 +32,10 @@ export default function GlassCard({
       className={cn("glass-card group relative overflow-hidden hud-border bg-white/[0.01]", className)}
     >
       {/* Dynamic Cosmic Glow */}
-      <div className="absolute inset-0 bg-linear-to-br from-nebula-purple/5 via-transparent to-nebula-teal/5 opacity-0 group-hover:opacity-100 transiti
+      <div className="absolute inset-0 bg-linear-to-br from-nebula-purple/5 via-transparent to-nebula-teal/5 opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+      <div className="absolute -inset-[100%] bg-linear-to-tr from-accent/0 via-accent/5 to-accent/0 group-hover:translate-x-full group-hover:translate-y-full transition-transform duration-[2000ms] ease-in-out pointer-events-none" />
+      
+      <div className="relative z-10">{children}</div>
+    </motion.div>
+  );
+}
