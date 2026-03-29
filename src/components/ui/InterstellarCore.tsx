@@ -119,9 +119,9 @@ extend({ ShockwaveMaterial });
 // MAIN INTERSTELLAR CORE
 // ─────────────────────────────────────────────
 export default function InterstellarCore({ progress = 0 }: { progress: number }) {
-  const diskRef    = useRef<any>();
-  const photonRef  = useRef<any>();
-  const shockRef   = useRef<any>();
+  const diskRef    = useRef<any>(null);
+  const photonRef  = useRef<any>(null);
+  const shockRef   = useRef<any>(null);
   const coreRef    = useRef<THREE.Mesh>(null);
   const glowRef    = useRef<THREE.Mesh>(null);
 

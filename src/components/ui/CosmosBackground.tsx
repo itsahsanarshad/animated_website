@@ -1,213 +1,509 @@
 "use client";
 
-import { useRef, useMemo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { Stars, Points, PointMaterial } from "@react-three/drei";
-import * as THREE from "three";
-import InterstellarCore from "./InterstellarCore";
+import {
+  motion,
+  useTransform,
+  MotionValue,
+  useMotionValue,
+} from "framer-motion";
+import { useState, useEffect } from "react";
+import type Lenis from "lenis";
 
-// ──────────────────────────────────────────────
-// PHASE-DRIVEN NEBULA BACKGROUND PLANE
-// ──────────────────────────────────────────────
-function NebulaCosmos({ progress = 0 }: { progress?: number }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  const uniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uProgress: { value: 0 },
-      // Phase colours
-      uVoid: { value: new THREE.Color("#000005") },
-      uNebula: { value: new THREE.Color("#2d054a") },
-      uNova: { value: new THREE.Color("#7c1a00") },
-      uNovaGold: { value: new THREE.Color("#f59e0b") },
-    }),
-    []
-  );
-
-  useFrame(({ clock }) => {
-    if (!meshRef.current) return;
-    const mat = meshRef.current.material as THREE.ShaderMaterial;
-    mat.uniforms.uTime.value = clock.getElapsedTime();
-    mat.uniforms.uProgress.value = progress;
-  });
-
-  return (
-    <mesh ref={meshRef} position={[0, 0, -15]} scale={[40, 40, 1]}>
-      <planeGeometry args={[1, 1, 1, 1]} />
-      <shaderMaterial
-        transparent
-        depthWrite={false}
-        blending={THREE.AdditiveBlending}
-        uniforms={uniforms}
-        vertexShader={`
-          varying vec2 vUv;
-          void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `}
-        fragmentShader={`
-          varying vec2 vUv;
-          uniform float uTime;
-          uniform float uProgress;
-          uniform vec3 uVoid;
-          uniform vec3 uNebula;
-          uniform vec3 uNova;
-          uniform vec3 uNovaGold;
-
-          // Hash noise
-          float hash(vec2 p) {
-            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-          }
-
-          float noise(vec2 p) {
-            vec2 i = floor(p);
-            vec2 f = fract(p);
-            f = f * f * (3.0 - 2.0 * f);
-            float a = hash(i);
-            float b = hash(i + vec2(1.0, 0.0));
-            float c = hash(i + vec2(0.0, 1.0));
-            float d = hash(i + vec2(1.0, 1.0));
-            return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-          }
-
-          float fbm(vec2 p) {
-            float v = 0.0;
-            float a = 0.5;
-            for (int i = 0; i < 5; i++) {
-              v += a * noise(p);
-              p = p * 2.1 + vec2(1.7, 9.2);
-              a *= 0.5;
-            }
-            return v;
-          }
-
-          void main() {
-            vec2 uv = vUv - 0.5;
-            float dist = length(uv);
-            float t = uTime * 0.05;
-
-            // Phase split: 0-0.45 void, 0.45-0.75 nebula, 0.75-1.0 supernova
-            float nebulaPhase = smoothstep(0.35, 0.65, uProgress);
-            float novaPhase   = smoothstep(0.65, 0.90, uProgress);
-
-            // FBM nebula clouds
-            float n = fbm(uv * 3.0 + t);
-            float n2 = fbm(uv * 2.0 - t * 0.7 + 1.5);
-            float nebulaMask = smoothstep(0.4, 0.9, n) * smoothstep(1.2, 0.1, dist * 2.5);
-
-            // Radial supernova explosion
-            float radialBurst = smoothstep(0.9, 0.0, dist * (1.5 - novaPhase));
-            float rayBurst = 0.0;
-            if (novaPhase > 0.0) {
-              float angle = atan(uv.y, uv.x);
-              float rays = abs(sin(angle * 6.0 + t * 2.0)) * abs(sin(angle * 11.0 - t));
-              rayBurst = rays * smoothstep(0.8, 0.1, dist) * novaPhase;
-            }
-
-            // Phase-blend colours
-            vec3 col = uVoid;
-            col = mix(col, uNebula * (n * 1.8 + 0.4), nebulaPhase * nebulaMask * 0.9);
-            col = mix(col, uNova * (n2 * 1.4 + 0.6), novaPhase * 0.7);
-            col += uNovaGold * (radialBurst * novaPhase * 0.5 + rayBurst * 0.6);
-
-            // Radial vignette – always dark at edges
-            float vignette = smoothstep(1.2, 0.2, dist);
-            float alpha = (nebulaMask * nebulaPhase * 0.6 + novaPhase * radialBurst * 0.9 + rayBurst * novaPhase * 0.5) * vignette;
-
-            gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.95));
-          }
-        `}
-      />
-    </mesh>
-  );
+interface Props {
+  progress: MotionValue<number>; // kept for API compatibility, but we also self-subscribe to Lenis
 }
 
-// ──────────────────────────────────────────────
-// STAR FIELD – accelerates + brightens on progress
-// ──────────────────────────────────────────────
-function StarField({ progress = 0 }: { progress?: number }) {
-  const points = useMemo(() => {
-    const p = new Float32Array(10000 * 3);
-    for (let i = 0; i < 10000; i++) {
-      p[i * 3]     = (Math.random() - 0.5) * 80;
-      p[i * 3 + 1] = (Math.random() - 0.5) * 80;
-      p[i * 3 + 2] = (Math.random() - 0.5) * 80;
-    }
-    return p;
+// ─────────────────────────────────────────────────────────────
+//  Seeded pseudo-random: same output every call with same seed
+// ─────────────────────────────────────────────────────────────
+function seededRand(seed: number) {
+  const x = Math.sin(seed + 1) * 10000;
+  return x - Math.floor(x);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CSS Star Field – client-only to prevent hydration mismatch
+// ─────────────────────────────────────────────────────────────
+type StarDot = {
+  id: number; x: number; y: number; r: number;
+  opacity: number; dur: number; delay: number;
+};
+
+function StarField() {
+  const [stars, setStars] = useState<StarDot[]>([]);
+  useEffect(() => {
+    setStars(
+      Array.from({ length: 180 }, (_, i) => ({
+        id: i,
+        x: seededRand(i * 3) * 100,
+        y: seededRand(i * 7 + 1) * 100,
+        r: seededRand(i * 11 + 2) * 1.4 + 0.3,
+        opacity: seededRand(i * 13 + 3) * 0.5 + 0.2,
+        dur: seededRand(i * 17 + 4) * 4 + 2,
+        delay: seededRand(i * 19 + 5) * 5,
+      }))
+    );
   }, []);
 
-  const ref = useRef<THREE.Points>(null);
-
-  useFrame(({ mouse }) => {
-    if (!ref.current) return;
-    ref.current.rotation.y += 0.00015 + progress * 0.0008;
-    ref.current.rotation.x += 0.00005 + progress * 0.0003;
-    ref.current.position.x = THREE.MathUtils.lerp(ref.current.position.x, mouse.x * 1.5, 0.04);
-    ref.current.position.y = THREE.MathUtils.lerp(ref.current.position.y, mouse.y * 1.5, 0.04);
-  });
-
-  // Star colour shifts from cool white → warm amber as nova approaches
-  const starColor = progress > 0.7
-    ? `hsl(${40 - (progress - 0.7) * 40}, 80%, 80%)`
-    : "#ffffff";
-
   return (
-    <group>
-      <Points ref={ref} positions={points} stride={3} frustumCulled={false}>
-        <PointMaterial
-          transparent
-          color={starColor}
-          size={0.035 + progress * 0.02}
-          sizeAttenuation
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {stars.map((s) => (
+        <motion.div
+          key={s.id}
+          className="absolute rounded-full bg-white"
+          style={{ left: `${s.x}%`, top: `${s.y}%`, width: s.r, height: s.r }}
+          animate={{ opacity: [s.opacity * 0.3, s.opacity, s.opacity * 0.3] }}
+          transition={{ duration: s.dur, delay: s.delay, repeat: Infinity, ease: "easeInOut" }}
         />
-      </Points>
-      <Stars
-        radius={140}
-        depth={70}
-        count={5000}
-        factor={5}
-        saturation={0}
-        fade
-        speed={1.2 + progress * 3}
-      />
-    </group>
+      ))}
+    </div>
   );
 }
 
-// ──────────────────────────────────────────────
-// MAIN EXPORT
-// ──────────────────────────────────────────────
-export default function CosmosBackground({ progress = 0 }: { progress?: number }) {
+// ─────────────────────────────────────────────────────────────
+//  Supernova explosion rays – expand radially from center
+// ─────────────────────────────────────────────────────────────
+function ExplosionRays({ progress }: { progress: MotionValue<number> }) {
+  // Rays are visible only during the explosion window (12%–35% scroll)
+  const opacity = useTransform(progress, [0.10, 0.14, 0.28, 0.38], [0, 1, 0.9, 0]);
+  const rayCount = 24;
+
   return (
-    <div
-      className="fixed inset-0 pointer-events-none"
-      style={{
-        zIndex: -1,
-        // Background colour transitions: void → deep purple → amber/nova
-        backgroundColor:
-          progress > 0.7
-            ? `hsl(${20 - (progress - 0.7) * 30}, ${(progress - 0.7) * 40}%, ${1 + (progress - 0.7) * 4}%)`
-            : progress > 0.4
-            ? `hsl(${270}, ${(progress - 0.4) * 10}%, ${0.5 + (progress - 0.4) * 1.5}%)`
-            : "#000005",
-        transition: "background-color 0.5s ease",
-      }}
+    <motion.div
+      className="absolute inset-0 flex items-center justify-center pointer-events-none"
+      style={{ opacity }}
     >
-      <Canvas
-        camera={{ position: [0, 0, 8], fov: 75 + progress * 15 }}
-        gl={{ antialias: false, alpha: true }}
-        dpr={[1, 1.5]}
-      >
-        <ambientLight intensity={0.3 + progress * 0.5} />
-        <pointLight position={[0, 0, 4]} intensity={2 + progress * 6} color={progress > 0.6 ? "#f59e0b" : "#22c55e"} />
-        <StarField progress={progress} />
-        <NebulaCosmos progress={progress} />
-        <InterstellarCore progress={progress} />
-      </Canvas>
-    </div>
+      {Array.from({ length: rayCount }).map((_, i) => {
+        const angle = Math.round((i / rayCount) * 360);
+        const length = Math.round(200 + seededRand(i * 31) * 250);
+        const width  = Math.max(1, Math.round(1 + seededRand(i * 37) * 2.5));
+        
+        return (
+          <motion.div
+            key={i}
+            className="absolute origin-left"
+            style={{
+              left: "50%",
+              top: "50%",
+              width: `${length}px`,
+              height: `${width}px`,
+              rotate: `${angle}deg`,
+              translateY: `-${width / 2}px`,
+              background: `linear-gradient(to right, #fff8e0, #fbbf2480, transparent)`,
+              borderRadius: 4,
+              scale: useTransform(progress, [0.15, 0.32], [0.1, 1]),
+            }}
+          />
+        );
+      })}
+    </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Main CosmosBackground
+// ─────────────────────────────────────────────────────────────
+export default function CosmosBackground({ progress: _propProgress }: Props) {
+  // ── Subscribe to Lenis for accurate smooth-scroll progress ──
+  // Framer's useScroll() tracks native scroll, but Lenis intercepts it.
+  // We subscribe directly to Lenis's scroll event for the correct progress.
+  const lenisProgress = useMotionValue(0);
+
+  useEffect(() => {
+    function sync() {
+      const lenis = (window as Window & { __lenis?: Lenis }).__lenis;
+      if (!lenis) return;
+      // Lenis exposes progress as lenis.progress (0–1)
+      lenis.on("scroll", ({ progress }: { progress: number }) => {
+        lenisProgress.set(progress);
+      });
+    }
+    // Lenis might not be ready yet (it mounts inside SmoothScroll which renders after)
+    const timer = setTimeout(sync, 300);
+    return () => clearTimeout(timer);
+  }, [lenisProgress]);
+
+  // Use lenisProgress for all animations (falls back to 0 until Lenis is ready)
+  const progress = lenisProgress;
+
+  // ── SCROLL PHASES ──────────────────────────────────────────
+  // 0–12%   : Pulsing bright star (visible through hero text)
+  // 12–30%  : Star explodes (supernova burst + shockwaves)
+  // 30–50%  : Black hole forms from collapse
+  // 50–100% : Black hole evolves → accretion disk shifts amber
+
+  // Background colour
+  const bgColor = useTransform(
+    progress,
+    [0,    0.12,  0.20,  0.32,  0.52,  0.72,  1],
+    ["#000005", "#000008", "#0a0005", "#050010", "#08001a", "#120008", "#180800"]
+  );
+
+  // ── STAR (phase 0–0.14) ─────────────────────────────────────
+  // Large bright star — visible THROUGH the hero text as a bg glow
+  const starOpacity = useTransform(progress, [0, 0.04, 0.11, 0.16], [1, 1, 1, 0]);
+  const starScale   = useTransform(progress, [0, 0.07, 0.11, 0.16], [1, 1.2, 1.1, 0]);
+  const starGlow    = useTransform(
+    progress,
+    [0, 0.06, 0.11],
+    [
+      "0 0 60px 30px #fbbf24cc, 0 0 150px 60px #fbbf2450, 0 0 300px 100px #fbbf2420",
+      "0 0 100px 50px #fff8e0ee, 0 0 250px 100px #fbbf2470, 0 0 500px 200px #fbbf2430",
+      "0 0 80px 40px #fbbf24cc, 0 0 200px 80px #fbbf2440",
+    ]
+  );
+
+  // ── FLASH (peak of explosion, phase 0.12–0.22) ─────────────
+  const flashOpacity = useTransform(progress, [0.11, 0.14, 0.19, 0.25], [0, 1, 0.7, 0]);
+
+  // ── SHOCKWAVE RINGS ────────────────────────────────────────
+  const ring1Opacity = useTransform(progress, [0.12, 0.16, 0.34], [0, 1, 0]);
+  const ring1Scale   = useTransform(progress, [0.12, 0.34], [0.05, 4.5]);
+  const ring2Opacity = useTransform(progress, [0.15, 0.19, 0.40], [0, 0.8, 0]);
+  const ring2Scale   = useTransform(progress, [0.15, 0.40], [0.05, 5.5]);
+  const ring3Opacity = useTransform(progress, [0.18, 0.23, 0.46], [0, 0.6, 0]);
+  const ring3Scale   = useTransform(progress, [0.18, 0.46], [0.05, 7]);
+
+  // ── BLACK HOLE (phase 0.26–1.0) ────────────────────────────
+  const bhOpacity    = useTransform(progress, [0.24, 0.36, 0.90, 1], [0, 1, 1, 0.8]);
+  const bhScale      = useTransform(progress, [0.24, 0.38, 1], [0.01, 1, 1.3]);
+
+  // Horizon – the solid black pill
+  const horizonGlow  = useTransform(
+    progress,
+    [0.32, 0.52, 0.72, 1],
+    [
+      "0 0 30px 12px #059669aa",
+      "0 0 40px 15px #26d0ceaa",
+      "0 0 50px 20px #7c3aedaa",
+      "0 0 60px 25px #f59e0baa",
+    ]
+  );
+
+  // Accretion disk colour
+  const diskColor = useTransform(
+    progress,
+    [0.32, 0.52, 0.72, 1],
+    ["#059669", "#26d0ce", "#7c3aed", "#f59e0b"]
+  );
+  const diskRotate  = useTransform(progress, [0.32, 1], [0, 720]);
+  const diskOpacity = useTransform(progress, [0.28, 0.40, 0.92, 1], [0, 1, 0.85, 0.5]);
+  const diskScale   = useTransform(progress, [0.32, 0.52, 1], [0.2, 1, 1.4]);
+
+  // Photon ring
+  const photonColor   = useTransform(diskColor, (c) => c);
+  const photonOpacity = useTransform(progress, [0.30, 0.42, 0.92, 1], [0, 1, 1, 0.6]);
+  const photonScale   = useTransform(progress, [0.32, 0.46, 1], [0.1, 1, 1.2]);
+
+  // Outer gravitational lens glow
+  const lensColor   = useTransform(
+    progress,
+    [0.32, 0.52, 0.72, 1],
+    [
+      "radial-gradient(circle, #05966940 0%, transparent 70%)",
+      "radial-gradient(circle, #26d0ce30 0%, transparent 70%)",
+      "radial-gradient(circle, #7c3aed30 0%, transparent 70%)",
+      "radial-gradient(circle, #f59e0b30 0%, transparent 70%)",
+    ]
+  );
+  const lensOpacity = useTransform(progress, [0.28, 0.42, 1], [0, 1, 0.9]);
+
+  // Nebula cloud (purple haze, phase 0.42–0.80)
+  const nebulaOp = useTransform(progress, [0.40, 0.52, 0.70, 0.85], [0, 0.5, 0.5, 0]);
+
+  // ── SECOND SUPERNOVA (at scroll end) ───────────────────────
+  const novaOpacity    = useTransform(progress, [0.75, 0.85, 1], [0, 0.9, 0.7]);
+  const novaScale      = useTransform(progress, [0.75, 1], [0.5, 2.5]);
+  const novaRingOp     = useTransform(progress, [0.78, 0.88, 1], [0, 0.8, 0]);
+  const novaRingScale  = useTransform(progress, [0.78, 1], [0.2, 3.5]);
+  const novaBloopOp    = useTransform(progress, [0.80, 0.88, 1], [0, 0.6, 0]);
+  const novaBloopScale = useTransform(progress, [0.80, 1], [0.3, 5]);
+
+  return (
+    <motion.div
+      className="fixed inset-0 pointer-events-none overflow-hidden"
+      style={{ zIndex: 0, backgroundColor: bgColor }}
+    >
+      {/* Starfield */}
+      <StarField />
+
+      {/* ── Center stage – true viewport center so star shows behind hero text ── */}
+      <div className="absolute inset-0 flex items-center justify-center">
+
+        {/* ── PHASE 1: Pulsing star – LARGE so it shows through hero text ── */}
+        {/* Outer mega-glow (400px ambient) */}
+        <motion.div
+          className="absolute rounded-full"
+          style={{
+            width: 400,
+            height: 400,
+            opacity: starOpacity,
+            scale: starScale,
+            background: "radial-gradient(circle, #fbbf2430 0%, #fbbf2415 40%, transparent 70%)",
+            filter: "blur(40px)",
+          }}
+        />
+        {/* Core star body */}
+        <motion.div
+          className="absolute rounded-full"
+          style={{
+            width: 80,
+            height: 80,
+            opacity: starOpacity,
+            scale: starScale,
+            background: "radial-gradient(circle, #fff8e0 0%, #fbbf24 45%, #f59e0b 75%, transparent 100%)",
+            boxShadow: starGlow,
+          }}
+        />
+        {/* Star corona pulse rings */}
+        <motion.div
+          className="absolute rounded-full"
+          style={{ width: 160, height: 160, opacity: starOpacity }}
+          animate={{ scale: [1, 1.4, 1], opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <div className="w-full h-full rounded-full border border-yellow-300/50" />
+        </motion.div>
+        <motion.div
+          className="absolute rounded-full"
+          style={{ width: 260, height: 260, opacity: starOpacity }}
+          animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+        >
+          <div className="w-full h-full rounded-full border border-yellow-200/30" />
+        </motion.div>
+
+        {/* ── PHASE 2: Explosion flash ── */}
+        <motion.div
+          className="absolute rounded-full"
+          style={{
+            width: "200vmax",
+            height: "200vmax",
+            opacity: flashOpacity,
+            background: "radial-gradient(circle, #fff8e0 0%, #fbbf2460 20%, transparent 55%)",
+          }}
+        />
+
+        {/* Explosion rays */}
+        <ExplosionRays progress={progress} />
+
+        {/* Shockwave ring 1 */}
+        <motion.div
+          className="absolute rounded-full border-2 border-yellow-300/80 pointer-events-none"
+          style={{
+            width: 200,
+            height: 200,
+            opacity: ring1Opacity,
+            scale: ring1Scale,
+            boxShadow: "0 0 20px 6px #fbbf2460",
+          }}
+        />
+        {/* Shockwave ring 2 */}
+        <motion.div
+          className="absolute rounded-full border border-amber-400/60 pointer-events-none"
+          style={{
+            width: 280,
+            height: 280,
+            opacity: ring2Opacity,
+            scale: ring2Scale,
+            boxShadow: "0 0 15px 4px #f59e0b40",
+          }}
+        />
+        {/* Shockwave ring 3 */}
+        <motion.div
+          className="absolute rounded-full border border-orange-500/40 pointer-events-none"
+          style={{
+            width: 350,
+            height: 350,
+            opacity: ring3Opacity,
+            scale: ring3Scale,
+          }}
+        />
+
+        {/* ── PHASE 3+: Black hole ── */}
+        <motion.div
+          className="absolute"
+          style={{ opacity: bhOpacity, scale: bhScale }}
+        >
+          {/* Outer lens glow */}
+          <motion.div
+            className="absolute rounded-full"
+            style={{
+              width: 700,
+              height: 700,
+              top: "50%",
+              left: "50%",
+              translate: "-50% -50%",
+              opacity: lensOpacity,
+              background: lensColor,
+              filter: "blur(80px)",
+            }}
+          />
+
+          {/* Nebula cloud */}
+          <motion.div
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: 600,
+              height: 350,
+              top: "50%",
+              left: "50%",
+              translate: "-50% -50%",
+              opacity: nebulaOp,
+              background: "radial-gradient(ellipse, #7c3aed30 0%, #4c1d9520 50%, transparent 75%)",
+              filter: "blur(40px)",
+            }}
+          />
+
+          {/* Accretion disk – outer ring */}
+          <motion.div
+            className="absolute rounded-full"
+            style={{
+              width: 460,
+              height: 460,
+              top: "50%",
+              left: "50%",
+              translate: "-50% -50%",
+              opacity: diskOpacity,
+              rotate: diskRotate,
+              scale: diskScale,
+            }}
+          >
+            <motion.div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: diskColor,
+                WebkitMaskImage:
+                  "conic-gradient(from 0deg, black 0%, transparent 22%, black 44%, transparent 66%, black 88%, transparent 100%)",
+                maskImage:
+                  "conic-gradient(from 0deg, black 0%, transparent 22%, black 44%, transparent 66%, black 88%, transparent 100%)",
+                filter: "blur(10px)",
+                opacity: 0.95,
+              }}
+            />
+          </motion.div>
+
+          {/* Accretion disk – inner counter-ring */}
+          <motion.div
+            className="absolute rounded-full"
+            style={{
+              width: 310,
+              height: 310,
+              top: "50%",
+              left: "50%",
+              translate: "-50% -50%",
+              opacity: diskOpacity,
+              rotate: useTransform(progress, [0.35, 1], [0, -540]),
+              scale: diskScale,
+            }}
+          >
+            <motion.div
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: diskColor,
+                WebkitMaskImage:
+                  "conic-gradient(from 90deg, black 0%, transparent 28%, black 55%, transparent 82%, black 100%)",
+                maskImage:
+                  "conic-gradient(from 90deg, black 0%, transparent 28%, black 55%, transparent 82%, black 100%)",
+                filter: "blur(7px)",
+                opacity: 0.75,
+              }}
+            />
+          </motion.div>
+
+          {/* Photon ring */}
+          <motion.div
+            className="absolute rounded-full"
+            style={{
+              width: 210,
+              height: 210,
+              top: "50%",
+              left: "50%",
+              translate: "-50% -50%",
+              opacity: photonOpacity,
+              scale: photonScale,
+            }}
+          >
+            <motion.div
+              className="absolute inset-[-2px] rounded-full"
+              style={{
+                border: "2px solid",
+                borderColor: photonColor,
+                boxShadow: useTransform(
+                  photonColor,
+                  (c) => `0 0 20px 6px ${c}99, 0 0 60px 20px ${c}40`
+                ),
+              }}
+            />
+          </motion.div>
+
+          {/* Event horizon – solid black sphere */}
+          <motion.div
+            className="absolute rounded-full bg-black"
+            style={{
+              width: 160,
+              height: 160,
+              top: "50%",
+              left: "50%",
+              translate: "-50% -50%",
+              boxShadow: horizonGlow,
+            }}
+          />
+        </motion.div>
+
+        {/* ── PHASE 4: End supernova bloom ── */}
+        <motion.div
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            width: 300,
+            height: 300,
+            opacity: novaOpacity,
+            scale: novaScale,
+            background:
+              "radial-gradient(circle, #fbbf24aa 0%, #f59e0b60 30%, #ea580c30 60%, transparent 80%)",
+            filter: "blur(20px)",
+          }}
+        />
+        {/* Supernova rays conic */}
+        <motion.div
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            width: 1200,
+            height: 1200,
+            opacity: useTransform(progress, [0.78, 0.88, 1], [0, 0.5, 0.35]),
+            scale: useTransform(progress, [0.78, 1], [0.2, 1.2]),
+            background:
+              "conic-gradient(from 0deg, transparent 0%, #f59e0b15 5%, transparent 10%, #fbbf2415 15%, transparent 20%, #f59e0b15 25%, transparent 30%, #fbbf2420 35%, transparent 40%, #f59e0b15 45%, transparent 50%, #f59e0b15 55%, transparent 60%, #fbbf2415 65%, transparent 70%, #f59e0b15 75%, transparent 80%, #fbbf2410 85%, transparent 90%, #f59e0b15 95%, transparent 100%)",
+          }}
+        />
+        {/* Shockwave ring */}
+        <motion.div
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            width: 500,
+            height: 500,
+            opacity: novaRingOp,
+            scale: novaRingScale,
+            border: "3px solid #f59e0b",
+            boxShadow: "0 0 40px 15px #f59e0b70, inset 0 0 40px 15px #f59e0b40",
+          }}
+        />
+        {/* Full blorp bloom */}
+        <motion.div
+          className="absolute pointer-events-none"
+          style={{
+            width: "100vw",
+            height: "100vh",
+            top: "50%",
+            left: "50%",
+            translate: "-50% -50%",
+            opacity: novaBloopOp,
+            scale: novaBloopScale,
+            background:
+              "radial-gradient(ellipse at center, #f59e0b18 0%, #fbbf2410 30%, transparent 65%)",
+          }}
+        />
+      </div>
+    </motion.div>
   );
 }

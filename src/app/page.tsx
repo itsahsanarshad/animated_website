@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { useScroll, motion, useSpring } from "framer-motion";
+import { useRef } from "react";
+import { useScroll, useSpring } from "framer-motion";
+import { useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Hero from "@/components/sections/Hero";
 import About from "@/components/sections/About";
@@ -19,19 +20,14 @@ import HUDOverlay from "@/components/ui/HUDOverlay";
 export default function Home() {
   const [introFinished, setIntroFinished] = useState(false);
   const warpRef = useRef<WarpEffectHandle>(null);
-  
+
+  // Raw scroll progress → spring-smoothed MotionValue (no state needed)
   const { scrollYProgress } = useScroll();
   const smoothProgress = useSpring(scrollYProgress, {
-    stiffness: 100,
-    damping: 30,
-    restDelta: 0.001
+    stiffness: 80,
+    damping: 25,
+    restDelta: 0.001,
   });
-
-  const [progressValue, setProgressValue] = useState(0);
-
-  useEffect(() => {
-    return smoothProgress.onChange((v) => setProgressValue(v));
-  }, [smoothProgress]);
 
   const handleNavClick = () => {
     warpRef.current?.trigger();
@@ -39,17 +35,19 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-background text-foreground overflow-x-hidden">
-      <CosmosBackground progress={progressValue} />
+      {/* Pass MotionValue directly – no useState re-renders, fully reactive */}
+      <CosmosBackground progress={smoothProgress} />
+
       <IntroSequence onComplete={() => setIntroFinished(true)} />
       <WarpEffect ref={warpRef} />
-      
+
       {introFinished && (
         <>
           <HUDOverlay />
           <SmoothScroll>
             <Navbar onNavClick={handleNavClick} />
             <AudioController />
-            <main className="flex flex-col relative z-10">
+            <main className="flex flex-col relative">
               <Hero />
               <About />
               <Skills />

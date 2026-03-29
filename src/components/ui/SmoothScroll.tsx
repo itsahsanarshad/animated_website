@@ -3,6 +3,11 @@
 import { useEffect, useRef } from "react";
 import Lenis from "lenis";
 
+// Expose lenis instance globally so CosmosBackground can read scroll progress
+declare global {
+  interface Window { __lenis?: Lenis }
+}
+
 export default function SmoothScroll({
   children,
 }: {
@@ -22,6 +27,7 @@ export default function SmoothScroll({
     });
 
     lenisRef.current = lenis;
+    window.__lenis = lenis;
 
     function raf(time: number) {
       lenis.raf(time);
@@ -32,6 +38,7 @@ export default function SmoothScroll({
 
     return () => {
       lenis.destroy();
+      delete window.__lenis;
     };
   }, []);
 
